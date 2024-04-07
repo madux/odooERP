@@ -43,6 +43,7 @@ class accountJournal(models.Model):
     _inherit = "account.journal"
     
     for_public_use = fields.Boolean(string="For Public user")
+    
     code = fields.Char(
         string='Short Code',
         size=20, 
@@ -96,6 +97,67 @@ class accountJournal(models.Model):
                 'domain': [('id', 'in', record_ids)]
             } 
         
+class AccountPayment(models.Model):
+    _inherit = 'account.payment'
+
+    external_memo_request = fields.Boolean(string='External request')
+    suitable_journal_ids = fields.Many2many('account.journal', compute='_compute_suitable_journal_ids')
+    destination_journal_id = fields.Many2one(
+        comodel_name='account.journal',
+        string='Destination Journal',
+        domain="[('id', 'in', suitable_journal_ids)]",
+        check_company=True,
+    )
+    # domain="[('type', 'in', ('bank','cash')), ('company_id', '=', company_id), ('id', '!=', journal_id)]",
+
+    # payment_journal_id = fields.Many2one(
+    #     'account.journal', 
+    #     string="Payment Journal", 
+    #     required=False,
+    #     domain="[('id', 'in', suitable_journal_ids)]"
+    #     )
+
+    @api.constrains('amount')
+    def check_amount(self):
+        if self.amount <= 0:
+            raise ValidationError('Amount must be greater than 0 !!!')
+
+    def action_post(self):
+        account_major_user = (self.env.is_admin() or self.env.user.has_group('ik_multi_branch.account_major_user'))
+        if self.external_memo_request and not account_major_user:
+            raise ValidationError("Ops. You are not allowed confirm this Bill. Only Accountant General Group is responsible to do this.")
+        res = super(AccountPayment, self).action_post()
+        return res
+    
+    @api.depends('company_id')
+    def _compute_suitable_journal_ids(self):
+        for m in self:
+            journal_type = m.invoice_filter_type_domain or 'general'
+            company_id = m.company_id.id or self.env.company.id
+            Journals = self.env['account.journal'].sudo()
+            account_major_user = (self.env.is_admin() or self.env.user.has_group('ik_multi_branch.account_major_user'))
+            domain = [('company_id', '=', company_id), ('type', 'in', ('bank','cash')),('id', '!=', m.journal_id.id)]
+            branch_ids = [rec.id for rec in self.env.user.branch_ids if rec] + [self.env.user.branch_id.id]
+            journal_ids = []
+            for journal in Journals.search([]):
+                journal_branches = [rec.id for rec in journal.allowed_branch_ids] + [journal.branch_id.id]
+                if set(branch_ids).intersection(set(journal_branches)):
+                    journal_ids.append(journal.id)
+                 
+                if journal.for_public_use:
+                    journal_ids.append(journal.id)
+            if account_major_user:
+                domain = domain
+            else:
+                # journal_ids = journal_ids.remove(self.journal_id.id) # removed the id of already selected journal id
+                domain = [
+                    ('company_id', '=', company_id),
+                    ('type', 'in', ('bank','cash')),
+                    ('id', 'in', journal_ids)
+                ]
+
+            m.suitable_journal_ids = self.env['account.journal'].search(domain)
+
         
 class AccountInvoice(models.Model):
     _inherit = 'account.move'
@@ -177,4 +239,34 @@ class AccountInvoice(models.Model):
             raise ValidationError("Ops. You are not allowed cancel this Bill. Only Accountant General Group is responsible to do this.")
         res = super(AccountInvoice, self).action_post()
         return res
+    
+    def button_register_payment(self):
+        account_major_user = (self.env.is_admin() or self.env.user.has_group('ik_multi_branch.account_major_user'))
+        if not account_major_user:
+            raise ValidationError("""
+                                  Ops. You are not allowed pay this Bill. Only Branch/ Accountant General
+                                   Group is responsible to do this.""")
+        
+        view = self.env.ref('account.view_account_payment_form')
+        view_id = view and view.id or False
+        context = dict(self._context or {})
+        context= {
+            'default_is_internal_transfer': True,
+            'default_amount': self.amount_total,
+            'default_payment_type': 'outbound',
+            'default_journal_id': False,
+            # 'default_move_id': self.id,
+            'default_branch_id': self.branch_id.id,
+            'default_external_memo_request': True,
+        }
+        return {
+                'name':'Payment transfer',
+                'type':'ir.actions.act_window',
+                'view_type':'form',
+                'res_model':'account.payment',
+                'views':[(view.id, 'form')],
+                'view_id':view.id,
+                'target':'new',
+                'context':context,
+                }
 

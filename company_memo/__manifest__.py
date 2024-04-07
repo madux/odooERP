@@ -18,6 +18,7 @@
         'views/memo_forward_view.xml',
         'views/memo_config_view.xml',
         'views/account_account_view.xml',
+        'views/account_payment.xml',
         'views/account_move.xml',
         'views/document_view.xml',
         'views/document_kanban_view.xml',

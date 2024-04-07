@@ -11,21 +11,13 @@ class AccountPayment(models.Model):
     _inherit = 'account.payment'
 
     memo_reference = fields.Many2one('memo.model', string="Memo Reference")
-    
-    # def post(self):
-    #     res = super(AccountPayment, self).post()
-    #     if self.memo_reference:
-    #         # self.memo_reference.state = "Done"
-    #         self.memo_reference.is_request_completed = True
-    #         self.sudo().memo_reference.update_final_state_and_approver()
-    #     return res
 
     def action_post(self):
         res = super(AccountPayment, self).action_post()
         if self.memo_reference:
             # self.memo_reference.state = "Done"
             self.memo_reference.is_request_completed = True
-            self.sudo().memo_reference.update_final_state_and_approver()
+            self.sudo().memo_reference.finalize_payment()
         return res
  
 

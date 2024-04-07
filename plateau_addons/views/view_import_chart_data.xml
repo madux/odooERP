@@ -9,8 +9,11 @@
                 <header>
                     Import 
                 </header>
+                <div class="oe_edit_only alert alert-info" role="alert">
+                    Select the type of default account to create for rows e.g "Domestic"<br/>
+                    <br/>
+                </div>
                 <group>
-
                     <field name="filename" invisible="1"/> 
                     <field name="index"/> 
                 </group>
@@ -18,8 +21,8 @@
 
                     <field name="data_file" filename="filename" widget="binary"/>
                     <field name="account_type" required="1"/>
-                    <field name="journal_type" required="1"/>
-                    <field name="default_account" required="1"/>
+                    <field name="journal_type" required="0" invisible="1"/>
+                    <field name="default_account" required="0" invisible="1"/>
 
                 </group>
                 <footer>
@@ -57,6 +60,12 @@
             id="menu_import_applicants_records"
             name="Import Public Chart of Account"
             parent="base.menu_users"
+            action="plateau_addons.action_pl_import_applicants"
+            sequence="102"/>
+    <menuitem
+            id="menu_memo_import_applicants_records"
+            name="Import Chart of Account"
+            parent="company_memo.memo_configuration"
             action="plateau_addons.action_pl_import_applicants"
             sequence="102"/>
 

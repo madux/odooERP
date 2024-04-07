@@ -2,9 +2,12 @@
 <!DOCTYPE xml>
 <odoo>
     <data>
+        <record model="ir.module.category" id="module_category_ik_branch">
+            <field name="name">Multi-Branch</field>
+        </record>
         <record id="account_major_user" model="res.groups">
-            <field name="name">Top Account User</field>
-            <field name="category_id" ref="base.module_category_accounting_accounting"/>
+            <field name="name">Accountant General (Top user)</field>
+            <field name="category_id" ref="ik_multi_branch.module_category_ik_branch"/>
              <!-- <field name="users" eval="[(4, ref('base.group_system'))]"/> -->
 			<field name="implied_ids" eval="[
             (4, ref('base.group_system')),

@@ -81,7 +81,6 @@ class Memo_Model(models.Model):
     name = fields.Char('Subject', size=400)
     code = fields.Char('Code', readonly=True)
     employee_id = fields.Many2one('hr.employee', string = 'Employee', default =_default_employee) 
-    # district_id = fields.Many2one("hr.district", string="District ID")
     direct_employee_id = fields.Many2one('hr.employee', string = 'Employee') 
     set_staff = fields.Many2one('hr.employee', string = 'Employee')
     demo_staff = fields.Integer(string='User',
@@ -1401,51 +1400,84 @@ class Memo_Model(models.Model):
     #     else:
     #         return inv
     #     return inv
-    def validate_account_invoices(self):
-        if not self.invoice_ids:
-            raise ValidationError("Please ensure the invoice lines are added")
 
-        invalid_record = self.mapped('invoice_ids').filtered(lambda s: not s.partner_id or not s.journal_id) # payment_journal_id
-        if invalid_record:
-            raise ValidationError("Partner, Payment journal must be selected. Also ensure the status is in draft")
+    is_internal_transfer = fields.Boolean("Is internal payment ? ", help="""
+                                      This help to show if the payment is an internal payment 
+                                      request or transfer to journals"""
+                                      )
+    payment_ids = fields.Many2many(
+        "account.payment",
+        string="Payment"
+        )
+    
+    def validate_account_invoices(self):
+        if not self.is_internal_transfer:
+            if not self.invoice_ids:
+                raise ValidationError("Please ensure the invoice lines are added")
+            else:
+                invalid_record = self.mapped('invoice_ids').filtered(lambda s: not s.partner_id or not s.journal_id) # payment_journal_id
+                if invalid_record:
+                    raise ValidationError("Partner, Payment journal must be selected. Also ensure the status is in draft")
         
+        else:
+            if not self.payment_ids:
+                raise ValidationError("Please ensure the payment lines are added")
+            '''If internal payment transfer, system displays the payment line'''
+            raise ValidationError("Payments should be handled manually to ensure accuracy")
+    
     def action_post_and_vallidate_payment(self): # Register Payment
         self.validate_account_invoices()
-        outbound_payment_method = self.env['account.payment.method'].sudo().search(
-                [('code', '=', 'manual'), ('payment_type', '=', 'outbound')], limit=1)
-        payment_method = 2
-        invoice_line_ids = []
-        for count, rec in enumerate(self.invoice_ids, 1):
-            if not rec.invoice_line_ids:
-                raise ValidationError(
-                    f'Invoice at line {count} does not have move lines'
-                    ) 
-            if rec.payment_state == 'not_paid' and rec.state == 'draft':
-                rec.action_post()
-            invoice_line_ids += [invl.id for invl in rec.invoice_line_ids]
+         
+    # def action_post_and_vallidate_payment(self): # Register Payment
+    #     self.validate_account_invoices()
+    #     outbound_payment_method = self.env['account.payment.method'].sudo().search(
+    #             [('code', '=', 'manual'), ('payment_type', '=', 'outbound')], limit=1)
+    #     payment_method = 2
+    #     invoice_line_ids = []
+    #     for count, rec in enumerate(self.invoice_ids, 1):
+    #         if not rec.invoice_line_ids:
+    #             raise ValidationError(
+    #                 f'Invoice at line {count} does not have move lines'
+    #                 ) 
+    #         if rec.payment_state == 'not_paid' and rec.state == 'draft':
+    #             rec.action_post()
+    #         invoice_line_ids += [invl.id for invl in rec.invoice_line_ids]
         
-            journal_id = rec.journal_id # payment_journal_id
-            if journal_id:
-                payment_method = journal_id.outbound_payment_method_line_ids[0].id if \
-                    journal_id.outbound_payment_method_line_ids else outbound_payment_method.id \
-                        if outbound_payment_method else payment_method
-        # raise ValidationError(type(invoice_line_ids))
-        payments = self.env['account.payment.register'].with_context(active_model='account.move', active_ids=self.invoice_ids.ids).create({
-                'group_payment': False,
-                'branch_id': self.branch_id.id,
-                'payment_method_line_id': payment_method,
-                'line_ids': [(6, 0, invoice_line_ids)]
-            })._create_payments()
-        self.finalize_payment()
+    #         journal_id = rec.journal_id # payment_journal_id
+    #         if journal_id:
+    #             payment_method = journal_id.outbound_payment_method_line_ids[0].id if \
+    #                 journal_id.outbound_payment_method_line_ids else outbound_payment_method.id \
+    #                     if outbound_payment_method else payment_method
+    #     # raise ValidationError(type(invoice_line_ids))
+    #     payments = self.env['account.payment.register'].with_context(active_model='account.move', active_ids=self.invoice_ids.ids).create({
+    #             'group_payment': False,
+    #             'branch_id': self.branch_id.id,
+    #             'payment_method_line_id': payment_method,
+    #             'line_ids': [(6, 0, invoice_line_ids)]
+    #         })._create_payments()
+    #     self.finalize_payment()
 
     def finalize_payment(self):
-        if self.invoice_ids:
-            allpaid_invoice = self.mapped('invoice_ids').filtered(lambda s: s.payment_state in ['paid', 'in_payment'])
-            if allpaid_invoice:
+        if not self.is_internal_transfer:
+            if self.invoice_ids:
+                all_unpaid_invoice = self.mapped('invoice_ids').filtered(lambda s: s.payment_state not in ['paid', 'in_payment'])
+                if not all_unpaid_invoice:
+                    pass
+                else:
+                    self.state = "Done"
+                    self.update_final_state_and_approver()
+            else:
                 self.state = "Done"
-                self.update_final_state_and_approver()
         else:
-            self.state = "Done"
+            if self.payment_ids:
+                any_unposted_payments = self.mapped('payment_ids').filtered(lambda s: s.state != 'posted')
+                if any_unposted_payments:
+                    pass
+                else:
+                    self.state = "Done"
+                    self.update_final_state_and_approver()
+            else:
+                self.state = "Done"
  
     def get_payment_method_line_id(self, payment_type, journal_id):
             if journal_id:

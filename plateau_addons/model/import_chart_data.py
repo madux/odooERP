@@ -12,6 +12,17 @@ import base64
 
 _logger = logging.getLogger(__name__)
 
+class accountAccount(models.Model):
+    _inherit = "account.account"
+    
+    is_migrated = fields.Boolean(string="Is migrated")
+
+
+class accountJournal(models.Model):
+    _inherit = "account.journal"
+    
+    is_migrated = fields.Boolean(string="Is migrated")
+
 
 class ImportPLCharts(models.TransientModel):
     _name = 'pl.import.wizard'
@@ -53,24 +64,12 @@ class ImportPLCharts(models.TransientModel):
             ("off_balance", "Off-Balance Sheet"),
         ],
         string="Journal Type", tracking=True,
-        required=True,
+        required=False,
     )
 
     default_account = fields.Many2one('account.account', string="Default account")
 
-    def create_chart_of_account(self, name, code):
-        account_chart_obj = self.env['account.account']
-        if name and code:
-            account_existing = account_chart_obj.search([('code', '=', int(code))], limit = 1)
-            account = account_chart_obj.create({
-                        "name": name.strip().upper(),
-                        "code": int(code),
-                        "reconcile": True,
-                        "account_type": self.account_type,
-                    }) if not account_existing else account_existing
-            return account
-        else:
-            return None
+    
 
     def create_company(self, name, company_registry):
         if name and company_registry:
@@ -85,19 +84,6 @@ class ImportPLCharts(models.TransientModel):
         else:
             return None
         
-    # def create_journal(self, name, company_registry):
-    #     if name and company_registry:
-    #         company_obj = self.env['res.company']
-    #         company = company_obj.search([('company_registry', '=', company_registry)], limit=1)
-    #         if not company:
-    #             company = self.env['res.company'].create({
-    #                 'name': name,
-    #                 'company_registry': company_registry,
-    #             })
-    #         return company
-    #     else:
-    #         return None
-
     def generate_analytic_plan(self, partner):
         analytic_account_plan = self.env['account.analytic.plan'].sudo()
         if partner:
@@ -151,16 +137,35 @@ class ImportPLCharts(models.TransientModel):
         else:
             return None
         
-    def create_journal(self, code, name, branch, account):
+    def create_chart_of_account(self, name, code, type=False):
+        account_chart_obj = self.env['account.account']
+        if name and code:
+            account_existing = account_chart_obj.search([('code', '=', str(code))], limit = 1)
+            account = account_chart_obj.create({
+                        "name": name.strip().upper(),
+                        "code": str(code),
+                        'is_migrated': True,
+                        "reconcile": True,
+                        "account_type": self.account_type if not type else type,
+                    }) if not account_existing else account_existing
+            return account
+        else:
+            return None
+        
+    def create_journal(self, code, name, branch, journal_type, default_account_id, other_accounts):
+        #journal_type:  'sale', 'purchase', 'cash', 'bank', 'general'
         if name and code:
             journal_obj =  self.env['account.journal']
             account_journal_existing = journal_obj.search([('code', '=',code)], limit = 1)
             journal = journal_obj.create({
                 'name': name,
-                'type': self.journal_type,
+                'type': journal_type,
                 'code': code,
+                'is_migrated': True,
                 'branch_id': branch.id,
-                'default_account_id': self.default_account.id
+                'default_account_id': default_account_id,
+                'loss_account_id': other_accounts.get('loss_account_id') if journal_type in ['bank'] else False,
+                'profit_account_id': other_accounts.get('profit_account_id') if journal_type in ['bank'] else False,
             }) if not account_journal_existing else account_journal_existing
             return journal
         else:
@@ -218,19 +223,53 @@ class ImportPLCharts(models.TransientModel):
         unsuccess_records = []
         for row in file_data:
             if row[0] and row[1] and row[5] and row[2]:
-                account_id = self.create_chart_of_account(row[5], row[2])
-                _logger.info(
-                    f"Surviving thiws ganme {row} and {account_id.name}"
-                )
+                
                 partner = self.create_contact(row[1].strip(), row[0])
                 branch = self.create_branch(row[1].strip(), row[0])
-                journal = self.create_journal(row[0], row[1], branch, account_id)
-                account_id.update({
-                    'allowed_journal_ids': [(4, journal.id)]
-                })
+                # Creating the main charts of accounts id for main company account 
+                account_code = str(int(row[2]))
+                account_id = self.create_chart_of_account(row[5], account_code, self.account_type)
+                _logger.info(
+                    f"Surviving this game {row} and {account_id.name}"
+                )
+                journal_type_items = ['bank', 'sale', 'purchase']
+                # creating the three tiers of journals (bank/cash/sale/purchase) for the journals and creating the respective accounts i.e expense, income, asset cash and bank
+                for journal_type in journal_type_items:
+                    default_journal_expense_account_id = self.create_chart_of_account(f"Expense Account for {str(row[1])}", f"EXJ{str(row[0])}", "expense")
+                    default_journal_income_account_id = self.create_chart_of_account(f"INCOME for {str(row[1])}", f'INC{str(row[0])}', "income")
+                    default_journal_bank_cash_account_id = self.create_chart_of_account(f"BNK/CASH for {str(row[1])}",f'BC{str(row[0])}', "asset_cash")
+                    default_account_dict = {
+                    'loss_account_id': default_journal_expense_account_id.id if default_journal_expense_account_id else False,
+                    'profit_account_id': default_journal_income_account_id.id if default_journal_income_account_id else False,
+                    'bank_account_id': default_journal_bank_cash_account_id.id if default_journal_bank_cash_account_id else False
+                    } 
+                    default_account_id = default_account_dict.get('loss_account_id') if journal_type == 'purchase' else \
+                    default_account_dict.get('profit_account_id') if journal_type == 'sale' else default_account_dict.get('bank_account_id')
+                    journal = self.create_journal(
+                        f"{journal_type[0].capitalize()} - {str(row[0])}", # B009901, S009993, P332222 
+                        f"{journal_type.capitalize()} - {str(row[1])}", 
+                        branch,
+                        journal_type,
+                        default_account_id = default_account_id,
+                        other_accounts = default_account_dict,
+                        )
+                    account_id.update({
+                        'allowed_journal_ids': [(4, journal.id)],
+                        'branch_id': branch,
+                    })
+                    default_journal_expense_account_id.update({
+                        'allowed_journal_ids': [(4, journal.id)],
+                        'branch_id': branch,
+                    })
+                    default_journal_income_account_id.update({
+                        'allowed_journal_ids': [(4, journal.id)],
+                        'branch_id': branch,
+                    })
+                    default_journal_bank_cash_account_id.update({
+                        'allowed_journal_ids': [(4, journal.id)],
+                        'branch_id': branch,
+                    })
                 self.create_analytic_account(row[3], partner, branch)
-                # kwargs = {'code': row[0], 'description': row[3]}
-                # vendor_bill = self.create_vendor_bill(company_id, account_id, analytic_account_id, row, kwargs)
                 _logger.info(f'data artifacts generated: {account_id.name}')
                 count += 1
                 success_records.append(row[0])

@@ -11,6 +11,17 @@ class AccountPayment(models.Model):
     _inherit = 'account.payment'
 
     memo_reference = fields.Many2one('memo.model', string="Memo Reference")
+    external_memo_request = fields.Boolean(string="External memo request")
+
+    @api.depends('partner_id', 'journal_id', 'destination_journal_id')
+    def _compute_is_internal_transfer(self):
+        for payment in self:
+            if not payment.external_memo_request:
+                payment.is_internal_transfer = payment.partner_id \
+                                           and payment.partner_id == payment.journal_id.company_id.partner_id \
+                                           and payment.destination_journal_id
+            else:
+                payment.is_internal_transfer = True
 
     def action_post(self):
         res = super(AccountPayment, self).action_post()

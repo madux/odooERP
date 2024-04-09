@@ -134,7 +134,7 @@
                         </group>
                         <notebook>
                             <page name='description' string='Memo Body'>
-                                <field name="description" string = "More Notes" placeholder="Notes..." widget="html" attrs="{'readonly':[('state','in',['Done', 'Approve'])]}"/>
+                                <field name="description" string = "More Notes" placeholder="Notes..." widget="html" required="1" attrs="{'readonly':[('state','in',['Done', 'Approve'])]}"/>
                             </page> 
                             <page name='Products' string='Request item' attrs="{'invisible':[('memo_type_key','not in',['material_request', 'procurement_request', 'cash_advance', 'soe', 'vehicle_request'])]}">
                                 <field name="product_ids" string = "Items" context="{'default_state': state, 'default_memo_type': memo_type, 'default_memo_type_key': memo_type_key}">
@@ -188,7 +188,7 @@
                             </page>
                             <!--ADDD-->
                             <page name='payment_ids' string='Internal Payment Request' attrs="{'invisible':['|', ('memo_type_key','not in',['Payment', 'payment', 'pay']), ('is_internal_transfer','=',False)]}">
-                                <field name="payment_ids" context="{'default_payment_type': 'outbound', 'default_is_internal_transfer': True, 'default_memo_reference': active_id}" domain="[('state', '=', 'draft')]" attrs="{'readonly':[('state','in',['Sent', 'Done', 'Approve2'])]}">
+                                <field name="payment_ids" context="{'default_external_memo_request': 1, 'default_payment_type': 'outbound', 'default_is_internal_transfer': 1, 'default_memo_reference': active_id}" domain="[('state', '=', 'draft')]" attrs="{'readonly':[('state','in',['Sent', 'Done', 'Approve2'])]}">
                                     <tree string="Payments">
                                         <field name="is_internal_transfer" string="Is transfer" readonly="1" force_save="1" invisible="0" default="True"/>  
                                         <field name="payment_type" string="Payment type" invisible="0"/>  
@@ -279,8 +279,10 @@
 
                                             <group>
                                                 <group name="group1">
-                                                    <field name="is_internal_transfer" attrs="{'readonly': [('state', '!=', 'draft')]}" force_save="1"/>
-                                                    <field name="payment_type" widget="radio" options="{'horizontal': True}" attrs="{'readonly': [('state', '!=', 'draft')]}"/>
+                                                    <field name="external_memo_request" invisible="1"/>
+                                                
+                                                    <field name="is_internal_transfer" attrs="{'invisible':[('external_memo_request','=',True)], 'readonly': [('state', '!=', 'draft')]}" force_save="1" default="True"/>
+                                                    <field name="payment_type" widget="radio" options="{'horizontal': True}" attrs="{'invisible':[('external_memo_request','=',True)],'readonly': [('state', '!=', 'draft')]}"/>
                                                     <field name="partner_id" context="{'default_is_company': True}" string="Customer" options="{&quot;no_open&quot;: True, &quot;no_create&quot;: True}" attrs="{'readonly':[('state', '!=', 'draft')],'invisible':['|', ('partner_type','!=','customer'), ('is_internal_transfer', '=', True)]}"/>
                                                     <field name="partner_id" context="{'default_is_company': True}" string="Vendor" options="{&quot;no_open&quot;: True, &quot;no_create&quot;: True}" attrs="{'readonly':[('state', '!=', 'draft')],'invisible':['|', ('partner_type','!=','supplier'), ('is_internal_transfer', '=', True)]}"/>
                                                     <label for="amount"/>
@@ -290,14 +292,14 @@
                                                     </div>
                                                     <field name="date" attrs="{'readonly': [('state', '!=', 'draft')]}"/>
                                                     <field name="ref" string="Memo"/>
-                                                    <field name="narration" invisible="0" placeholder="Please enter narration of this payment"/>
+                                                    <field name="narration" string="Narration" invisible="0" placeholder="Please enter narration of this payment"/>
                                                 </group>
                                                 <group name="group2">
-                                                    <field name="journal_id" domain="[('id', 'in', available_journal_ids)]" attrs="{'readonly': [('state', '!=', 'draft')]}" options="{&quot;no_open&quot;: True, &quot;no_create&quot;: True}"/>
+                                                    <field name="journal_id" domain="[('id', 'in', available_journal_ids)]" attrs="{'invisible':[('external_memo_request','=',True)], 'readonly': [('state', '!=', 'draft')]}" options="{&quot;no_open&quot;: True, &quot;no_create&quot;: True}"/>
                                                     <field name="payment_method_line_id" required="1" options="{'no_create': True, 'no_open': True}" attrs="{'readonly': [('state', '!=', 'draft')]}"/>
 
-                                                    <field name="partner_bank_id" string="Customer Bank Account" context="{'default_partner_id': partner_id, 'default_allow_out_payment': True}" attrs="{                                             'invisible': ['|', '|', '|', ('show_partner_bank_account', '=', False), ('partner_type','!=','customer'), ('is_internal_transfer', '=', True), ('payment_type', '=', 'inbound')],                                             'required': [('require_partner_bank_account', '=', True), ('is_internal_transfer', '=', False)],                                         }"/>
-                                                    <field name="partner_bank_id" string="Vendor Bank Account" context="{'default_partner_id': partner_id, 'default_allow_out_payment': True}" attrs="{                                             'invisible': ['|', '|', '|', ('show_partner_bank_account', '=', False), ('partner_type','!=','supplier'), ('is_internal_transfer', '=', True), ('payment_type', '=', 'inbound')],                                             'required': [('require_partner_bank_account', '=', True), ('is_internal_transfer', '=', False)],                                         }"/>
+                                                    <field name="partner_bank_id" string="Customer Bank Account" context="{'default_partner_id': partner_id, 'default_allow_out_payment': True}" attrs="{'invisible': ['|', '|', '|', ('show_partner_bank_account', '=', False), ('partner_type','!=','customer'), ('is_internal_transfer', '=', True), ('payment_type', '=', 'inbound')],                                             'required': [('require_partner_bank_account', '=', True), ('is_internal_transfer', '=', False)],                                         }"/>
+                                                    <field name="partner_bank_id" string="Vendor Bank Account" context="{'default_partner_id': partner_id, 'default_allow_out_payment': True}" attrs="{'invisible': ['|', '|', '|', ('show_partner_bank_account', '=', False), ('partner_type','!=','supplier'), ('is_internal_transfer', '=', True), ('payment_type', '=', 'inbound')],                                             'required': [('require_partner_bank_account', '=', True), ('is_internal_transfer', '=', False)],                                         }"/>
 
                                                     <!-- This field should always be readonly but using readonly="1" overrides the other partner_bank_id
                                                     fields readonly condition in the framework, preventing the modification of these fields -->

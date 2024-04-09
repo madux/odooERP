@@ -403,6 +403,11 @@ class Memo_Model(models.Model):
     def get_amount(self):
         if self.invoice_ids:
             self.amountfig = sum([rec.amount_total for rec in self.invoice_ids])
+
+    @api.onchange('payment_ids')
+    def get_payment_amount(self):
+        if self.payment_ids:
+            self.amountfig = sum([rec.amount for rec in self.payment_ids])
     
     @api.onchange('memo_type')
     def get_default_stage_id(self):
@@ -622,8 +627,26 @@ class Memo_Model(models.Model):
                 if invoice_line_without_price:
                     raise ValidationError(f"All invoice line must have a price amount greater than 0 at line {count}")
 
+    def validate_governor_attachement(self):
+        '''Ensures an attachment is added before submission'''
+        if self.is_internal_transfer:
+            attachment_data = self.env['ir.attachment'].sudo().read_group([
+                ('res_model', '=', 'memo.model'), 
+                ('res_id', 'in', self.ids)], ['res_id'], ['res_id'])
+            attachment = dict((data['res_id'], data['res_id_count']) for data in attachment_data)
+            attachments = attachment.get(self.id, 0)
+            if attachments < 1: # ensure at least one attachment is found
+                raise ValidationError(attachments)
+    
+    def validate_payment_line(self):
+        '''Ensures a payment line is added if is_internal transfer'''
+        if self.is_internal_transfer and not self.payment_ids:
+            raise ValidationError("Please ensure at least one payment line is added !!!")
+    
     def forward_memo(self):
         self.validate_invoice_line()
+        self.validate_governor_attachement()
+        self.validate_payment_line()
         # if self.state == "submit":
         #     if not self.env.user.id == self.employee_id.user_id.id:#  or self.env.uid != self.create_uid:
         #         raise ValidationError('You cannot forward a memo at draft state because you are not the initiator')

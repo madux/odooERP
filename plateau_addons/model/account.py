@@ -101,6 +101,7 @@ class AccountPayment(models.Model):
     _inherit = 'account.payment'
 
     external_memo_request = fields.Boolean(string='External request')
+    is_top_account_user = fields.Boolean('Is top account user?', compute="compute_top_account_user")
     suitable_journal_ids = fields.Many2many('account.journal', compute='_compute_suitable_journal_ids')
     destination_journal_id = fields.Many2one(
         comodel_name='account.journal',
@@ -116,6 +117,15 @@ class AccountPayment(models.Model):
     #     required=False,
     #     domain="[('id', 'in', suitable_journal_ids)]"
     #     )
+
+    @api.depends('external_memo_request')
+    def compute_top_account_user(self):
+        for rec in self:
+            account_major_user = (self.env.is_admin() or self.env.user.has_group('ik_multi_branch.account_major_user'))
+            if self.external_memo_request and account_major_user:
+                rec.is_top_account_user = True
+            else:
+                rec.is_top_account_user = False
 
     @api.constrains('amount')
     def check_amount(self):

@@ -28,6 +28,7 @@
         'account_reports',
         'purchase',
         'sale_analysis_report',
+        'account_batch_payment',
         # 'inventory_extension',
         'sale_stock', 
         # 'eha_product_restriction', 

@@ -226,7 +226,7 @@ class ImportPLCharts(models.TransientModel):
         for row in file_data:
             
             if row[0] and row[1] and row[5] and row[2]:
-                code = str(int(row[0])) if type(row[0]) == float else str(int(row[2]))
+                code = str(int(row[0])) if type(row[0]) == float else str(int(row[0]))
                 partner = self.create_contact(row[1].strip(), code)
                 branch = self.create_branch(row[1].strip(), code)
                 # Creating the main charts of accounts id for main company account 
@@ -236,11 +236,11 @@ class ImportPLCharts(models.TransientModel):
                     f"Surviving this game {row} and {account_id.name} and code {account_code}"
                 )
                 journal_type_items = ['bank', 'sale', 'purchase']
+                default_journal_expense_account_id = self.create_chart_of_account(f"Expense Account for {str(row[1])}", f"EXJ{code}", "expense")
+                default_journal_income_account_id = self.create_chart_of_account(f"INCOME for {str(row[1])}", f'INC{code}', "income")
+                default_journal_bank_cash_account_id = self.create_chart_of_account(f"BNK/CASH for {str(row[1])}",f'BC{code}', "asset_cash")
                 # creating the three tiers of journals (bank/cash/sale/purchase) for the journals and creating the respective accounts i.e expense, income, asset cash and bank
                 for journal_type in journal_type_items:
-                    default_journal_expense_account_id = self.create_chart_of_account(f"Expense Account for {str(row[1])}", f"EXJ{code}", "expense")
-                    default_journal_income_account_id = self.create_chart_of_account(f"INCOME for {str(row[1])}", f'INC{code}', "income")
-                    default_journal_bank_cash_account_id = self.create_chart_of_account(f"BNK/CASH for {str(row[1])}",f'BC{code}', "asset_cash")
                     default_account_dict = {
                     'loss_account_id': default_journal_expense_account_id.id if default_journal_expense_account_id else False,
                     'profit_account_id': default_journal_income_account_id.id if default_journal_income_account_id else False,

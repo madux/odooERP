@@ -23,8 +23,11 @@ class CompanyMemo(models.Model):
     def compute_top_account_user(self):
         for rec in self:
             account_major_user = (self.env.is_admin() or self.env.user.has_group('ik_multi_branch.account_major_user'))
-            if account_major_user and self.is_internal_transfer or self.external_memo_request:
-                rec.is_top_account_user = True
+            if (self.is_internal_transfer or self.external_memo_request):
+                if account_major_user:
+                    rec.is_top_account_user = True
+                else:
+                    rec.is_top_account_user = False
             else:
                 rec.is_top_account_user = False
 

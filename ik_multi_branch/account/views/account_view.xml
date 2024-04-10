@@ -119,7 +119,7 @@
             <field name="inherit_id" ref="account.view_account_invoice_filter"/>
             <field name="arch" type="xml">
                 <field name="partner_id" operator="child_of" position="after">
-                   <field name="branch_id"/>
+                   <field name="branch_id" options="{'no_create': True, 'no_open': True}"/>
                 </field>
             </field>
         </record>
@@ -135,7 +135,7 @@
                 </button>
 
                 <field name="invoice_date" position="after">
-                    <field name="branch_id"/>
+                    <field name="branch_id" options="{'no_create': True, 'no_open': True}" readonly="1"/>
                 </field>
 
                 

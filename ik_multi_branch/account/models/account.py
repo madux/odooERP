@@ -388,6 +388,42 @@ class AccountPaymentRegister(models.TransientModel):
 
     branch_id = fields.Many2one('multi.branch', string='MDA Sector',
                                 required=False)    
+    
+    @api.depends('payment_type', 'company_id', 'can_edit_wizard')
+    def _compute_available_journal_ids(self):
+        # raise ValidationError('ebbuka')
+        Journals = self.env['account.journal'].sudo()
+        for wizard in self:
+            # if wizard.can_edit_wizard:
+            #     batch = wizard._get_batches()[0]
+            #     wizard.available_journal_ids = wizard._get_batch_available_journals(batch)
+            # else:
+            domain =[
+                ('company_id', '=', wizard.company_id.id),
+                ('type', 'in', ('bank', 'cash')),
+            ]
+            account_major_user = self.env.user.has_group('ik_multi_branch.account_major_user')
+            branch_ids = [rec.id for rec in self.env.user.branch_ids if rec] + [self.env.user.branch_id.id]
+            journal_ids = []
+            for journal in Journals.search([]):
+                journal_branches = [rec.id for rec in journal.allowed_branch_ids] + [journal.branch_id.id]
+                if set(branch_ids).intersection(set(journal_branches)):
+                    journal_ids.append(journal.id)
+                
+                if journal.for_public_use:
+                    journal_ids.append(journal.id)
+            if account_major_user:
+                domain = domain
+
+            else:
+                # journal_ids = journal_ids.remove(self.journal_id.id) # removed the id of already selected journal id
+                domain = [
+                    ('company_id', '=', wizard.company_id.id),
+                    ('type', 'in', ('bank','cash')),
+                    ('id', 'in', journal_ids)
+                ]
+            wizard.available_journal_ids = self.env['account.journal'].search(domain)
+
     @api.model
     def get_move_branch(self):
         return {

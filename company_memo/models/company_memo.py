@@ -358,6 +358,16 @@ class Memo_Model(models.Model):
         'memo_partner_id',
         string='Reciepients', 
         )
+    is_internal_transfer = fields.Boolean("Is internal payment ? ", help="""
+                                      This help to show if the payment is an internal payment 
+                                      request or transfer to journals"""
+                                      )
+    payment_ids = fields.Many2many(
+        "account.payment",
+        string="Payment"
+        )
+    expiry_mail_sent = fields.Boolean(default=False, copy=False)
+    
 
     @api.constrains('document_folder')
     def check_next_reoccurance_constraint(self):
@@ -636,7 +646,7 @@ class Memo_Model(models.Model):
             attachment = dict((data['res_id'], data['res_id_count']) for data in attachment_data)
             attachments = attachment.get(self.id, 0)
             if attachments < 1: # ensure at least one attachment is found
-                raise ValidationError(attachments)
+                raise ValidationError("Please ensure at least one document is attached")
     
     def validate_payment_line(self):
         '''Ensures a payment line is added if is_internal transfer'''
@@ -1424,14 +1434,7 @@ class Memo_Model(models.Model):
     #         return inv
     #     return inv
 
-    is_internal_transfer = fields.Boolean("Is internal payment ? ", help="""
-                                      This help to show if the payment is an internal payment 
-                                      request or transfer to journals"""
-                                      )
-    payment_ids = fields.Many2many(
-        "account.payment",
-        string="Payment"
-        )
+    
     
     def validate_account_invoices(self):
         if not self.is_internal_transfer:
@@ -1643,26 +1646,22 @@ class Memo_Model(models.Model):
             if order.state in ["submit", "Refuse"]:
                 order.status_progress = random.randint(0, 5)
             elif order.state == "Sent":
-                order.status_progress = random.randint(20, 60)
+                order.status_progress = random.randint(30, 40)
             elif order.state == "Approve":
-                order.status_progress = random.randint(71, 95)
+                order.status_progress = random.randint(90, 95)
             elif order.state == "Approve2":
-                order.status_progress = random.randint(71, 98)
+                order.status_progress = random.randint(90, 95)
             elif order.state == "Done":
-                order.status_progress = random.randint(98, 100)
+                order.status_progress = random.randint(99, 100)
             else:
                 order.status_progress = random.randint(0, 1) # 100 / len(order.state)
     
-    expiry_mail_sent = fields.Boolean(default=False, copy=False)
-
     @api.model
     def _cron_notify_server_request_followers(self):
         """
         System should check all requests end date expired, and send message
         to server admin or followers. 
         """
-        # for record in self:
-        
         expired_memos = self.env['memo.model'].search([
             ('request_end_date', '<', fields.Datetime.now()),
             ('expiry_mail_sent', '=', False),
@@ -1677,10 +1676,6 @@ class Memo_Model(models.Model):
                 """
                 exp.mail_sending_direct(body_msg)
                 exp.expiry_mail_sent = True
-                # request_followers = [
-                #     eml.work_email for eml in exp.memo_setting_id.approver_ids if eml.work_email
-                #     ]
-        
 
     def unlink(self):
         for delete in self.filtered(lambda delete: delete.state in ['Sent','Approve2', 'Approve']):

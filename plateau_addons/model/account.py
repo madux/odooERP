@@ -145,8 +145,8 @@ class AccountPayment(models.Model):
             journal_type = m.invoice_filter_type_domain or 'general'
             company_id = m.company_id.id or self.env.company.id
             Journals = self.env['account.journal'].sudo()
-            account_major_user = (self.env.is_admin() or self.env.user.has_group('ik_multi_branch.account_major_user'))
             domain = [('company_id', '=', company_id), ('type', 'in', ('bank','cash')),('id', '!=', m.journal_id.id)]
+            account_major_user = (self.env.is_admin() or self.env.user.has_group('ik_multi_branch.account_major_user'))
             branch_ids = [rec.id for rec in self.env.user.branch_ids if rec] + [self.env.user.branch_id.id]
             journal_ids = []
             for journal in Journals.search([]):

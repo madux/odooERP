@@ -6,7 +6,7 @@ from odoo import fields, models, api, _
 
 class PaymentSchedule(models.Model):
     _inherit = "account.move"
-    _description = 'Account move payment schedule'
+    _description = 'Account move'
 
       
     schedule_date = fields.Date(

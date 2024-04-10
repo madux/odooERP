@@ -10,8 +10,6 @@
                     <field name="suitable_journal_ids" invisible="0" widget="many2many_tags"/>
                     <field name="is_top_account_user" invisible="1"/> 
                 </xpath>
-
-                
             </field>
         </record>
 
@@ -43,7 +41,7 @@
                 <field name="invoice_date" position="attributes">
                     <attribute name="required">1</attribute>
                 </field>
-
+ 
                  <!-- <field name="partner_id" position="attributes">
                     <attribute name="string">'Beneficiary'</attribute>
                 </field> -->
@@ -51,9 +49,13 @@
                 <xpath expr="//field[@name='invoice_line_ids']//tree//field[@name='product_id']" position="attributes">
                     <attribute name="string">Item</attribute> 
                 </xpath>
+
                 <xpath expr="//field[@name='invoice_line_ids']//tree//field[@name='price_unit']" position="attributes">
                     <attribute name="string">Amount</attribute> 
                 </xpath> 
+                <xpath expr="//field[@name='invoice_line_ids']//tree//field[@name='account_id']" position="attributes">
+                    <attribute name="groups"></attribute> 
+                </xpath>
                 
 
             </field>
@@ -96,6 +98,13 @@
         </record>
         <record id="account.menu_board_journal_1" model="ir.ui.menu">
             <field name="action" ref="plateau_addons.ir_action_server_account_transaction"/>
+        </record>
+        <record id="account.menu_board_journal_1" model="ir.ui.menu">
+            <field name="groups_id" eval="[(6, 0, [
+			ref('account.group_account_manager'),
+			ref('account.group_account_invoice'),
+			ref('account.group_account_readonly'),
+			])]"/>
         </record>
 
         <record id="account.menu_finance_payables" model="ir.ui.menu">

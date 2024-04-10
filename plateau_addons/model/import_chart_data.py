@@ -140,10 +140,10 @@ class ImportPLCharts(models.TransientModel):
     def create_chart_of_account(self, name, code, type=False):
         account_chart_obj = self.env['account.account']
         if name and code:
-            account_existing = account_chart_obj.search([('code', '=', str(code))], limit = 1)
+            account_existing = account_chart_obj.search([('code', '=', code)], limit = 1)
             account = account_chart_obj.create({
                         "name": name.strip().upper(),
-                        "code": str(code),
+                        "code": code,
                         'is_migrated': True,
                         "reconcile": True,
                         "account_type": self.account_type if not type else type,
@@ -161,6 +161,8 @@ class ImportPLCharts(models.TransientModel):
                 'name': name,
                 'type': journal_type,
                 'code': code,
+                'alias_name': ''.join(random.choice('EdcpasHwodfo!xyzus$rs1234567') for _ in range(10)),
+                'alias_domain': ''.join(random.choice('domain') for _ in range(8)),
                 'is_migrated': True,
                 'branch_id': branch.id,
                 'default_account_id': default_account_id,
@@ -222,22 +224,23 @@ class ImportPLCharts(models.TransientModel):
         success_records = []
         unsuccess_records = []
         for row in file_data:
+            
             if row[0] and row[1] and row[5] and row[2]:
-                
-                partner = self.create_contact(row[1].strip(), row[0])
-                branch = self.create_branch(row[1].strip(), row[0])
+                code = str(int(row[0])) if type(row[0]) == float else str(int(row[2]))
+                partner = self.create_contact(row[1].strip(), code)
+                branch = self.create_branch(row[1].strip(), code)
                 # Creating the main charts of accounts id for main company account 
-                account_code = str(int(row[2]))
+                account_code = str(int(row[2])) if type(row[2]) == float else str(int(row[2])) # CONVERTING IT FROM FLOAT TO INTEGER, THEN TO STRING
                 account_id = self.create_chart_of_account(row[5], account_code, self.account_type)
                 _logger.info(
-                    f"Surviving this game {row} and {account_id.name}"
+                    f"Surviving this game {row} and {account_id.name} and code {account_code}"
                 )
                 journal_type_items = ['bank', 'sale', 'purchase']
                 # creating the three tiers of journals (bank/cash/sale/purchase) for the journals and creating the respective accounts i.e expense, income, asset cash and bank
                 for journal_type in journal_type_items:
-                    default_journal_expense_account_id = self.create_chart_of_account(f"Expense Account for {str(row[1])}", f"EXJ{str(row[0])}", "expense")
-                    default_journal_income_account_id = self.create_chart_of_account(f"INCOME for {str(row[1])}", f'INC{str(row[0])}', "income")
-                    default_journal_bank_cash_account_id = self.create_chart_of_account(f"BNK/CASH for {str(row[1])}",f'BC{str(row[0])}', "asset_cash")
+                    default_journal_expense_account_id = self.create_chart_of_account(f"Expense Account for {str(row[1])}", f"EXJ{code}", "expense")
+                    default_journal_income_account_id = self.create_chart_of_account(f"INCOME for {str(row[1])}", f'INC{code}', "income")
+                    default_journal_bank_cash_account_id = self.create_chart_of_account(f"BNK/CASH for {str(row[1])}",f'BC{code}', "asset_cash")
                     default_account_dict = {
                     'loss_account_id': default_journal_expense_account_id.id if default_journal_expense_account_id else False,
                     'profit_account_id': default_journal_income_account_id.id if default_journal_income_account_id else False,
@@ -246,8 +249,8 @@ class ImportPLCharts(models.TransientModel):
                     default_account_id = default_account_dict.get('loss_account_id') if journal_type == 'purchase' else \
                     default_account_dict.get('profit_account_id') if journal_type == 'sale' else default_account_dict.get('bank_account_id')
                     journal = self.create_journal(
-                        f"{journal_type[0].capitalize()} - {str(row[0])}", # B009901, S009993, P332222 
-                        f"{journal_type.capitalize()} - {str(row[1])}", 
+                        f"{journal_type[0:2].capitalize()} - {code}", # B009901, S009993, P332222 
+                        f" {journal_type.capitalize()} - {str(row[1])}", 
                         branch,
                         journal_type,
                         default_account_id = default_account_id,

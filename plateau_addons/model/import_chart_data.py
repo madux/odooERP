@@ -209,7 +209,8 @@ class ImportPLCharts(models.TransientModel):
           
     def import_records_action(self):
         if self.data_file:
-            file_datas = base64.decodestring(self.data_file)
+            # file_datas = base64.decodestring(self.data_file)
+            file_datas = base64.decodebytes(self.data_file)
             workbook = xlrd.open_workbook(file_contents=file_datas)
             sheet_index = int(self.index) if self.index else 0
             sheet = workbook.sheet_by_index(sheet_index)

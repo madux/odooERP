@@ -696,6 +696,7 @@ class Memo_Model(models.Model):
                     # 'default_is_officer': is_officer,
                 },
             }
+
     """The wizard action passes the employee whom the memo was director to this function."""
     def get_initial_stage(self, memo_type, department_id):
         memo_settings = self.env['memo.config'].sudo().search([

@@ -754,7 +754,8 @@ class PortalRequest(http.Controller):
 			if post.get("selectRequestOption") != "employee_update":
 				self.generate_request_line(DataItems, memo_id)
 		
-			elif post.get("selectRequestOption") == "employee_update":
+			else:
+				# post.get("selectRequestOption") == "employee_update":
 				self.generate_employee_transfer_line(DataItems, memo_id)
 		
 		## generating attachment
@@ -767,7 +768,7 @@ class PortalRequest(http.Controller):
 		####
 		# memo_id.action_submit_button()
 		stage_id = memo_id.get_initial_stage(
-			memo_id.memo_type.memo_key, 
+			memo_id.memo_type.memo_key,
 			memo_id.employee_id.department_id.id or memo_id.dept_ids.id
 			)
 		_logger.info(f'''initial stage come be {stage_id} ''')

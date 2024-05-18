@@ -20,8 +20,8 @@
                 <group> 
 
                     <field name="data_file" filename="filename" widget="binary"/>
-                    <field name="account_type" attrs="{'invisible': [('import_type', '!=', 'chart')], 'required': [('import_type', '=', 'chart')]}"/>
                     <field name="import_type" required="0" invisible="0"/>
+                    <field name="account_type" attrs="{'invisible': [('import_type', '!=', 'chart')], 'required': [('import_type', '=', 'chart')]}"/>
                     <field name="running_journal_id" required="0" attrs="{'invisible': [('import_type', '=', 'chart')], 'required': [('import_type', '!=', 'chart')]}"/>
                     <field name="journal_type" required="0" invisible="1"/>
                     <field name="default_account" required="0" invisible="1"/>

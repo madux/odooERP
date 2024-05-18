@@ -11,49 +11,7 @@ from xlrd import open_workbook
 import base64
 
 _logger = logging.getLogger(__name__)
-
-
-class accountPayment(models.Model):
-    _inherit = "account.payment"
-
-
-    def action_post(self):
-        res = super(accountPayment, self).action_post()
-        if self.external_memo_request and self.is_internal_transfer:
-            self.create_generate_statement_line()
-        return res
-
-    def create_generate_statement_line(self):
-        if self.external_memo_request and self.is_internal_transfer:
-            # create first statement for negative debit 
-            account_bank_statement_line = self.env['account.bank.statement.line'].sudo()
-            debit_vals = {
-                'journal_id': self.journal_id.id, 
-                'amount': -self.amount,
-                'payment_ref': self.narration,
-                'date': self.date
-            }
-            credit_vals = {
-                'journal_id': self.destination_journal_id.id, 
-                'amount': self.amount,
-                'payment_ref': self.narration,
-                'date': self.date
-            }
-            account_bank_statement_line.create(debit_vals) 
-            account_bank_statement_line.create(credit_vals) 
-
-
-class accountAccount(models.Model):
-    _inherit = "account.account"
-    
-    is_migrated = fields.Boolean(string="Is migrated")
-
-
-class accountJournal(models.Model):
-    _inherit = "account.journal"
-    
-    is_migrated = fields.Boolean(string="Is migrated")
-
+ 
 
 class ImportPLCharts(models.TransientModel):
     _name = 'pl.import.wizard'
@@ -61,14 +19,6 @@ class ImportPLCharts(models.TransientModel):
     data_file = fields.Binary(string="Upload File (.xls)")
     filename = fields.Char("Filename")
     index = fields.Integer("Sheet Index", default=0)
-    import_type = fields.Selection(
-        selection=[
-            ("chart", "Chart/Journal"),
-            ("transaction", "Account transactions"),
-        ],
-        string="Journal Type", tracking=True,
-        required=False, default = "chart"
-    )
 
     account_type = fields.Selection(
         selection=[
@@ -92,7 +42,7 @@ class ImportPLCharts(models.TransientModel):
             ("off_balance", "Off-Balance Sheet"),
         ],
         string="Account Type", tracking=True,
-        required=False,
+        required=True,
     )
     journal_type = fields.Selection(
         selection=[
@@ -107,7 +57,6 @@ class ImportPLCharts(models.TransientModel):
     )
 
     default_account = fields.Many2one('account.account', string="Default account")
-    running_journal_id = fields.Many2one('account.journal', string="Running Journal")
 
     def create_company(self, name, company_registry):
         if name and company_registry:
@@ -244,14 +193,8 @@ class ImportPLCharts(models.TransientModel):
             })],
         })
         return inv
-
+          
     def import_records_action(self):
-        if self.import_type == "chart":
-            self.import_charts_journal()
-        else:
-            self.import_account_transaction() 
-
-    def import_charts_journal(self):
         if self.data_file:
             # file_datas = base64.decodestring(self.data_file)
             file_datas = base64.decodebytes(self.data_file)
@@ -329,108 +272,6 @@ class ImportPLCharts(models.TransientModel):
             message = '\n'.join(errors)
             # return self.confirm_notification(message)
 
-    def import_account_transaction(self):
-        # MDA Bank transactions sample
-        if self.data_file:
-            file_datas = base64.decodebytes(self.data_file)
-            workbook = xlrd.open_workbook(file_contents=file_datas)
-            sheet_index = int(self.index) if self.index else 0
-            sheet = workbook.sheet_by_index(sheet_index)
-            data = [[sheet.cell_value(r, c) for c in range(sheet.ncols)] for r in range(sheet.nrows)]
-            data.pop(0)
-            file_data = data
-        else:
-            raise ValidationError('Please select file and type of file')
-        errors = ['The Following messages occurred']
-        unimport_count, count = 0, 0
-        success_records = []
-        unsuccess_records = []
-        account_bank_statement_line = self.env['account.bank.statement.line'].sudo()
-        if not self.running_journal_id:
-            raise ValidationError('please select a running journal') 
-        
-        for row in file_data:
-            # 0 Date of Approval, 1 Date of Payment,	2 Head
-            # 3 Sub-Head, 4 Credit (₦)  5 Debit (₦) 
-            journal_head = row[2]
-            date_of_payment = fields.Date.today() 
-            year, month, day = False, False, False
-            if row[1]:
-                if type(row[1]) in [float, int]:
-                    date_of_payment = datetime(*xlrd.xldate_as_tuple(row[1], 0))
-                elif type(row[1]) in str:
-                    dp = row[1].split('/')
-                    if dp:
-                        year = int(dp[2])
-                        month = int(dp[1])
-                        day = int(dp[0])
-                        date_of_payment = date(year, month, day)
-            credit = row[6] if row[6] and row[6] > 0 else False
-            debit = row[7] if row[7] and row[7] > 0 else False
-            narration = row[5]
-            if journal_head and debit:
-                source_journal = self.env['account.journal'].search([('code', '=', str(journal_head))], limit = 1)
-                if source_journal:
-                    # internal_payment = self.create_internal_payment(
-                    #     date_of_payment, 
-                    #     credit,
-                    #     debit,
-                    #     narration,
-                    #     source_journal,
-                    #     )
-                    credit_vals = {
-                        'journal_id': source_journal.id, 
-                        'amount': debit,
-                        'payment_ref': f"{row[4]}, {narration}",
-                        'date': date_of_payment
-                    }
-                    debit_vals = {
-                        'journal_id': self.running_journal_id.id, 
-                        'amount': -debit,
-                        'payment_ref': f"{row[4]}, {narration}",
-                        'date': date_of_payment
-                    }
-                    account_bank_statement_line.create(credit_vals) 
-                    account_bank_statement_line.create(debit_vals) 
-                    _logger.info(f'Loading the journal payment: {journal_head}')
-                    count += 1
-                    success_records.append(journal_head)
-                else:
-                    unsuccess_records.append(f"No related journal with code {journal_head} found ")
-
-            elif credit and not journal_head:
-                account_bank_statement_line = self.env['account.bank.statement.line'].sudo()
-                credit_vals = {
-                    'journal_id': self.running_journal_id.id, 
-                    'amount': credit,
-                    'payment_ref': narration,
-                    'date': date_of_payment
-                }
-                account_bank_statement_line.create(credit_vals) 
-            else:
-                unsuccess_records.append(journal_head)
-        errors.append('Successful Import(s): '+str(count)+' Record(s): See Records Below \n {}'.format(success_records))
-        errors.append('Unsuccessful Import(s): '+str(unsuccess_records)+' Record(s)')
-        if len(errors) > 1:
-            message = '\n'.join(errors)
-            return self.confirm_notification(message)
-
-    def create_internal_payment(self, date_of_payment, credit, debit, narration, mda_journal):
-        running_journal = self.running_journal_id
-        account_payment = self.env['account.payment']
-        vals = {
-            'is_internal_transfer': True, 
-            'payment_type': 'outbound' if debit else 'inbound', 
-            'amount': debit or credit,
-            'narration': narration,
-            'journal_id': running_journal.id if debit else mda_journal.id,
-            'destination_journal_id': mda_journal.id if debit else running_journal.id,
-            'payment_date': date_of_payment
-        }
-        payment = account_payment.create(vals) 
-        payment.create_generate_statement_line(payment)
-        
-            
     def confirm_notification(self,popup_message):
         view = self.env.ref('plateau_addons.pl_import_wizard_form_view')
         view_id = view and view.id or False

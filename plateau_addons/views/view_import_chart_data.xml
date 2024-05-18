@@ -17,13 +17,15 @@
                     <field name="filename" invisible="1"/> 
                     <field name="index"/> 
                 </group>
-                <group>
+                <group> 
 
                     <field name="data_file" filename="filename" widget="binary"/>
-                    <field name="account_type" required="1"/>
+                    <field name="account_type" attrs="{'invisible': [('import_type', '!=', 'chart')], 'required': [('import_type', '=', 'chart')]}"/>
+                    <field name="import_type" required="0" invisible="0"/>
+                    <field name="running_journal_id" required="0" attrs="{'invisible': [('import_type', '=', 'chart')], 'required': [('import_type', '!=', 'chart')]}"/>
                     <field name="journal_type" required="0" invisible="1"/>
                     <field name="default_account" required="0" invisible="1"/>
-
+                    
                 </group>
                 <footer>
                     <button name="import_records_action" string="Import Account Record" type="object"  class="oe_highlight"/>
@@ -66,6 +68,12 @@
             id="menu_memo_import_applicants_records"
             name="Import Chart of Account"
             parent="company_memo.memo_configuration"
+            action="plateau_addons.action_pl_import_applicants"
+            sequence="102"/>
+    <menuitem
+            id="menu_journal_and_chart_of_account_records"
+            name="Import Journal and COA"
+            parent="account.menu_finance_entries_accounting_miscellaneous"
             action="plateau_addons.action_pl_import_applicants"
             sequence="102"/>
 

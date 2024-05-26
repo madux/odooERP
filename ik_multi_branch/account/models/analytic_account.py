@@ -18,5 +18,6 @@ class AccountAnalyticLine(models.Model):
     @api.constrains('branch_id', 'account_id')
     def _check_company_id(self):
         for line in self:
-            if line.account_id.branch_id.company_id and line.branch_id.company_id.id != line.account_id.branch_id.company_id.id:
+            if line.account_id.company_id and line.company_id.id != line.account_id.company_id.id:
+            # if line.account_id.branch_id.company_id and line.branch_id.company_id.id != line.account_id.branch_id.company_id.id:
                 raise ValidationError(_('The selected account belongs to another company than the one you\'re trying to create an analytic item for'))

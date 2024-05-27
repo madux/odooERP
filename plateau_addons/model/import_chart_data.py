@@ -47,6 +47,35 @@ class accountAccount(models.Model):
     _inherit = "account.account"
     
     is_migrated = fields.Boolean(string="Is migrated")
+    ng_budget_lines = fields.One2many('ng.account.budget', 'general_account_id', string='Budget lines')
+
+
+class ngAccountBudget(models.Model):
+    _name = "ng.account.budget"
+    _rec_name = "general_journal_id"
+    _description = "To hold the budget of accounts and journal"
+    
+    is_migrated = fields.Boolean(string="Is migrated")
+    general_journal_id = fields.Many2one('account.journal', string='Journal')
+    general_account_id = fields.Many2one('account.account', string='Account')
+    budget_id = fields.Many2one('account.budget.post', string='Budget')
+    budget_amount = fields.Float(string="Budget Amount")
+    budget_used_amount = fields.Float(string="Utilized Amount")
+    budget_variance = fields.Float(string="Budget Variance", compute="compute_variance")
+    active = fields.Boolean(string="Active", default=True)
+    date_from = fields.Date(string="Date from")
+    date_to = fields.Date(string="Date To")
+    paid_date = fields.Date(string="Paid Date")
+    branch_id = fields.Many2one('multi.branch', string='MDA Sector',required=False)
+    move_id = fields.Many2one('account.move', string='Move')
+
+    @api.depends('budget_amount', 'budget_used_amount')
+    def compute_variance(self):
+        for rec in self:
+            if rec.budget_amount and rec.budget_used_amount:
+                rec.budget_variance = rec.budget_amount - rec.budget_used_amount
+            else:
+                rec.budget_variance = False
 
 
 class accountJournal(models.Model):
@@ -131,6 +160,34 @@ class ImportPLCharts(models.TransientModel):
     budget_position_id = fields.Many2one('account.budget.post', string="Budgetary position")
     account_analytic_plan_id = fields.Many2one('account.analytic.plan', string="Analytic account plan", default=lambda self: self.env['account.analytic.plan'].sudo().search([], limit=1))
 
+    def create_update_budget_line(self, account_id, journal_id, branch_id, budget_id, move_id, date_from=False, date_to=False, paid_date=False, budget_amount=0, amount_used=0):
+        exist_journal = self.env['ng.account.budget'].search([
+            ('general_account_id', '=', account_id),
+            ('general_journal_id', '=', journal_id),
+            ], limit=1)
+        if not exist_journal and budget_amount> 0:
+            self.env['ng.account.budget'].create({ 
+                'general_journal_id': journal_id, 
+                'general_account_id': account_id, 
+                'budget_amount': budget_amount, 
+                'budget_used_amount': amount_used,
+                'branch_id': branch_id.id,
+                'move_id': move_id.id if move_id else False, 
+                'active': True, 
+                'date_from': date_from,
+                'date_to': date_to,
+                'paid_date': paid_date,
+                'budget_id': budget_id.id,
+            })
+        else:
+            exist_journal.update({
+                'general_journal_id': journal_id, 
+                'general_account_id': account_id,
+                'budget_used_amount': exist_journal.budget_used_amount + amount_used, 
+                'move_id':  move_id.id if move_id else False,
+                'active': True, 
+            })
+
     @api.onchange('running_journal_id')
     def onchange_running_journal(self):
         if self.running_journal_id:
@@ -169,7 +226,7 @@ class ImportPLCharts(models.TransientModel):
             if not partner:
                 partner = self.env['res.partner'].create({
                     'name': name,
-                    'vat': code,
+                    'vat': str(code).replace('.0', ''),
                 })
             return partner
         else:
@@ -193,12 +250,13 @@ class ImportPLCharts(models.TransientModel):
             # plan_id = self.generate_analytic_plan(partner)
             account_existing = analytic_account.search([('code', '=',partner.vat)], limit = 1)
             account = analytic_account.create({
-                        "name": name, #partner.name.strip().title() +' - '+ partner.vat,
+                        "name": name or f"{journal_id.code - journal_id.code }", #partner.name.strip().title() +' - '+ partner.vat,
                         "partner_id": partner.id,
                         "branch_id": branch.id,
                         'company_id': self.env.company.id,
                         'general_journal_id': journal_id.id if journal_id else False, 
                         'general_account_id': account_id.id, 
+                        'currency_id': self.env.user.company_id.currency_id.id,
                         # "company_id": self.env.user.company_id.id,
                         "plan_id": self.account_analytic_plan_id.id, #plan_id.id if plan_id else False,
                         "crossovered_budget_line": [(0, 0, {
@@ -257,7 +315,7 @@ class ImportPLCharts(models.TransientModel):
                     'name': line.get('name'),
                     'ref': f"{line.get('name')} {origin}",
                     'account_id': line.get('debit_account_id'),
-                    'analytic_distribution': {analytic_distribution_id.id: 100}, # analytic_distribution_id.id,
+                    'analytic_distribution': {analytic_distribution_id.id: 100} if analytic_distribution_id else False, # analytic_distribution_id.id,
                     'debit': line.get('debit'),
                     'credit': 0.00,
                     'move_id': inv.id, 
@@ -267,7 +325,7 @@ class ImportPLCharts(models.TransientModel):
                     'name': line.get('name'),
                     'ref': f"{line.get('name')} {origin}",
                     'account_id': line.get('credit_account_id'),
-                    'analytic_distribution': {analytic_distribution_id.id: 100}, # analytic_distribution_id.id,
+                    'analytic_distribution': {analytic_distribution_id.id: 100} if analytic_distribution_id else False, # analytic_distribution_id.id,
                     'debit': 0,
                     'credit': line.get('credit'),
                     'move_id': inv.id,
@@ -300,6 +358,9 @@ class ImportPLCharts(models.TransientModel):
     def create_chart_of_account(self, name, code, type=False):
         account_chart_obj = self.env['account.account']
         if name and code:
+            _logger.info(f'AXCOUNT CODE {code}')
+            # raise ValidationError(code)
+
             account_existing = account_chart_obj.search([('code', '=', code)], limit = 1)
             account = account_chart_obj.create({
                         "name": name.strip().upper(),
@@ -343,7 +404,11 @@ class ImportPLCharts(models.TransientModel):
         else:
             self.import_account_transaction() 
 
+    # def import_charts_journal(self):
+    #     for rec in self.env['account.account'].search([]):
+    #         rec.code = rec.code.replace('.0', '')
     def import_charts_journal(self):
+
         if self.data_file:
             # file_datas = base64.decodestring(self.data_file)
             file_datas = base64.decodebytes(self.data_file)
@@ -361,12 +426,15 @@ class ImportPLCharts(models.TransientModel):
         unsuccess_records = []
         for row in file_data:
             if row[0] and row[1] and row[5] and row[2]:
-                code = str(int(row[0])) if type(row[0]) == float else str(int(row[0]))
+                code = str(row[0]).replace('.0', '')
+                # raise ValidationError(type(code))
+                # raise ValidationError(code)
+                # code = str(int(row[0])) if type(row[0]) == float else str(int(row[0]))
                 partner = self.create_contact(row[1].strip(), code)
                 branch = self.create_branch(row[1].strip(), code)
                 description = row[3] or ""
                 # Creating the main charts of accounts id for main company account 
-                account_code = str(int(row[2])) if type(row[2]) == float else str(int(row[2])) # CONVERTING IT FROM FLOAT TO INTEGER, THEN TO STRING
+                account_code = str(row[2]).replace('.0', '') #str(row[2])[:-2] # str(int(row[2])) if type(row[2]) == float else str(int(row[2])) # CONVERTING IT FROM FLOAT TO INTEGER, THEN TO STRING
                 account_id = self.create_chart_of_account(row[5], account_code, self.account_type)
                 _logger.info(
                     f"Surviving this game {row} and {account_id.name} and code {account_code}"
@@ -385,23 +453,27 @@ class ImportPLCharts(models.TransientModel):
                         'branch_id': branch,
                     })
                 budget_amount = float(row[4]) if type(row[4]) in [int, float] else 0
-                analytic_account_id = self.create_analytic_account(row[3], partner, branch, account_id, journal, budget_amount)
-                # movelines = {
-                #     'name': description,
-                #     'account_id': account_id.id,
-                #     'credit': budget_amount,
-                #     'debit': budget_amount,
-                #     'debit_account_id': account_id.id,
-                #     'credit_account_id': self.default_account.id,
-                # }
+                # analytic_account_id = self.create_analytic_account(row[3], partner, branch, account_id, journal, budget_amount)
+                date_from=False
+                date_to=False
+                paid_date=fields.Date.today()
+                self.create_update_budget_line(account_id.id, journal.id, branch, self.budget_id, False, date_from, date_to, paid_date, budget_amount, 0)
+                movelines = {
+                    'name': description,
+                    'account_id': account_id.id,
+                    'credit': budget_amount,
+                    'debit': budget_amount,
+                    'debit_account_id': self.default_account.id,
+                    'credit_account_id': account_id.id,
+                }
 
                 # Not to be created
-                # journal_move_id = self.create_journal_entry(
-                #     description, journal, 
-                #     description, False,
-                #     analytic_account_id, 
-                #     movelines)
-                # journal_move_id.action_post()
+                journal_move_id = self.create_journal_entry(
+                    description, journal, 
+                    description, False,
+                    False, 
+                    movelines)
+                journal_move_id.action_post()
                 _logger.info(f'data artifacts generated: {account_id.name}')
                 count += 1
                 success_records.append(row[0])
@@ -438,103 +510,109 @@ class ImportPLCharts(models.TransientModel):
             # bank_journal_id = self.env['account.journal'].search(
             # [('type', '=', 'bank'),
             #     ], limit=1)
-            debit, credit= row[5], row[6]
-            account_code= str(int(row[2])) if type(row[2]) in [float, int] else str(row[2])
-            account_head_id = self.env['account.account'].search([('code', '=', account_code)], limit=1)
-            # raise ValidationError(type(row[2]))
+            if row[2]:
+                debit, credit= row[5], row[6]
+                account_code= str(row[2]).replace('.0', '') # str(int(row[2])) if type(row[2]) in [float, int] else str(row[2])
+                account_head_id = self.env['account.account'].search([('code', '=', account_code)], limit=1)
+                # raise ValidationError(type(row[2]))
 
-            if debit or credit:
-                journal_head = row[1]
-                source_journal = self.env['account.journal'].search([('code', '=', str(journal_head))], limit = 1)
-                if not account_head_id:
-                    unsuccess_records.append(f"No related account found with code {row[2]} found ")
-                else:
-                    date_of_payment = fields.Date.today() 
-                    year, month, day = False, False, False
-                    date_row = row[0]
-                    if date_row:
-                        if type(date_row) in [float, int]:
-                            date_of_payment = datetime(*xlrd.xldate_as_tuple(date_row, 0))
-                        elif type(date_row) in str:
-                            dp = date_row.split('/')
-                            if dp:
-                                year = int(dp[2])
-                                month = int(dp[1])
-                                day = int(dp[0])
-                                date_of_payment = date(year, month, day)
-                    debit = row[5] if row[5] and row[5] > 0 else False
-                    credit = row[6] if row[6] and row[6] > 0 else False
-                    narration = row[4]
-                    movelines = {
-                        'name': narration,
-                        'account_id': account_head_id.id,
-                        'credit': credit,
-                        'debit': debit,
-                        'debit_account_id': account_head_id.id,
-                        'credit_account_id': self.default_account.id, # account of the bank that will be on credit
-                    }
-                    account_move = self.env['account.move'].sudo()
-                    inv = account_move.create({  
-                        'ref': narration,
-                        'origin': narration,
-                        'company_id': self.env.company.id,
-                        'invoice_date': date_of_payment or fields.Date.today(),
-                        'currency_id': self.env.user.company_id.currency_id.id,
-                        'invoice_date': fields.Date.today(),
-                        'date': fields.Date.today(),
-                        'journal_id': source_journal.id or self.running_journal_id.id,
-                        'move_type': 'entry',
-                    })
-                    line = movelines
-                    if line.get('credit') and line.get('credit') > 0:
-                        moveline = [{
-                                    'name': line.get('name'),
-                                    'ref': f"{line.get('name')} {narration}",
-                                    'account_id': line.get('debit_account_id'),
-                                    'analytic_distribution': False, # analytic_distribution_id.id,
-                                    'debit': line.get('credit'),
-                                    'credit': 0.00,
-                                    'move_id': inv.id, 
-                                    'company_id': self.env.company.id,
-                            },
-                            {
-                                    'name': line.get('name'),
-                                    'ref': f"{line.get('name')} {narration}",
-                                    'account_id': line.get('credit_account_id'),
-                                    'analytic_distribution': False, # analytic_distribution_id.id,
-                                    'debit': 0,
-                                    'credit': line.get('credit'),
-                                    'move_id': inv.id,
-                                    'company_id': self.env.company.id,
-                                }]
+                if debit or credit:
+                    journal_head = str(row[1]).replace("'", "") #row[1] 
+                    journal_head = str(row[1]).replace('.0', '')
+                    source_journal = self.env['account.journal'].search([('code', '=', str(journal_head))], limit = 1)
+                    if not account_head_id:
+                        unsuccess_records.append(f"No related account found with code {row[2]} found ")
                     else:
-                        moveline = [{
-                                    'name': line.get('name'),
-                                    'ref': f"{line.get('name')} {narration}",
-                                    'account_id': line.get('credit_account_id'),
-                                    'analytic_distribution': False, # analytic_distribution_id.id,
-                                    'debit': line.get('debit'),
-                                    'credit': 0,
-                                    'move_id': inv.id, 
-                                    'company_id': self.env.company.id,
-                            },
-                            {
-                                    'name': line.get('name'),
-                                    'ref': f"{line.get('name')} {narration}",
-                                    'account_id': self.running_journal_id.suspense_account_id.id,
-                                    'analytic_distribution': False, # analytic_distribution_id.id,
-                                    'debit': 0,
-                                    'credit': line.get('debit'),
-                                    'move_id': inv.id,
-                                    'company_id': self.env.company.id,
-                            }]
-                    inv.invoice_line_ids = [(0, 0, move) for move in moveline]
-                    inv.action_post()
-                    _logger.info(f'Loading the create new move with id: {inv.id}')
-                    count += 1
-                    success_records.append(row)
-            else:
-                unsuccess_records.append(account_head_id)
+                        date_of_payment = fields.Date.today() 
+                        year, month, day = False, False, False
+                        date_row = row[0]
+                        if date_row:
+                            if type(date_row) in [float, int]:
+                                date_of_payment = datetime(*xlrd.xldate_as_tuple(date_row, 0))
+                            elif type(date_row) in str:
+                                dp = date_row.split('/')
+                                if dp:
+                                    year = int(dp[2])
+                                    month = int(dp[1])
+                                    day = int(dp[0])
+                                    date_of_payment = date(year, month, day)
+                        debit = row[5] if row[5] and row[5] > 0 else False
+                        credit = row[6] if row[6] and row[6] > 0 else False
+                        narration = row[4]
+                        movelines = {
+                            'name': narration,
+                            'account_id': account_head_id.id,
+                            'credit': credit,
+                            'debit': debit,
+                            'debit_account_id': account_head_id.id,
+                            'credit_account_id': self.default_account.id, # account of the bank that will be on credit
+                        }
+                        account_move = self.env['account.move'].sudo()
+                        inv = account_move.create({  
+                            'ref': narration,
+                            'origin': narration,
+                            'company_id': self.env.company.id,
+                            'company_id': self.env.company.id,
+                            'invoice_date': date_of_payment or fields.Date.today(),
+                            'currency_id': self.env.user.company_id.currency_id.id,
+                            'invoice_date': fields.Date.today(),
+                            'date': fields.Date.today(),
+                            'journal_id': source_journal.id or self.running_journal_id.id,
+                            'move_type': 'entry',
+                        })
+                        line = movelines
+                        if line.get('credit') and line.get('credit') > 0:
+                            moveline = [{
+                                        'name': line.get('name'),
+                                        'ref': f"{line.get('name')} {narration}",
+                                        'account_id': line.get('debit_account_id'),
+                                        'analytic_distribution': False, # analytic_distribution_id.id,
+                                        'debit': line.get('credit'),
+                                        'credit': 0.0,
+                                        'move_id': inv.id, 
+                                        'company_id': self.env.company.id,
+                                },
+                                {
+                                        'name': line.get('name'),
+                                        'ref': f"{line.get('name')} {narration}",
+                                        'account_id': line.get('credit_account_id'),
+                                        'analytic_distribution': False, # analytic_distribution_id.id,
+                                        'debit': 0,
+                                        'credit': line.get('credit'),
+                                        'move_id': inv.id,
+                                        'company_id': self.env.company.id,
+                                    }]
+                            self.create_update_budget_line(line.get('debit_account_id'), inv.journal_id.id, inv.journal_id.branch_id, False, False, False, False, date_of_payment, budget_amount=False, amount_used=line.get('credit'))
+                            
+                        else:
+                            moveline = [{
+                                        'name': line.get('name'),
+                                        'ref': f"{line.get('name')} {narration}",
+                                        'account_id': line.get('credit_account_id'),
+                                        'analytic_distribution': False, # analytic_distribution_id.id,
+                                        'debit': 0,
+                                        'credit': line.get('debit'),
+                                        'move_id': inv.id, 
+                                        'company_id': self.env.company.id,
+                                },
+                                {
+                                        'name': line.get('name'),
+                                        'ref': f"{line.get('name')} {narration}",
+                                        'account_id': self.running_journal_id.suspense_account_id.id,
+                                        'analytic_distribution': False, # analytic_distribution_id.id,
+                                        'debit': line.get('debit'),
+                                        'credit': 0,
+                                        'move_id': inv.id,
+                                        'company_id': self.env.company.id,
+                                }]
+                            
+                        inv.invoice_line_ids = [(0, 0, move) for move in moveline]
+                        inv.action_post()
+                        _logger.info(f'Loading the create new move with id: {inv.id}')
+                        count += 1
+                        success_records.append(row)
+                else:
+                    unsuccess_records.append(account_head_id)
         errors.append('Successful Import(s): '+str(count)+' Record(s): See Records Below \n {}'.format(success_records))
         errors.append('Unsuccessful Import(s): '+str(unsuccess_records)+' Record(s)')
         if len(errors) > 1:

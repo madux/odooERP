@@ -84,6 +84,58 @@
             </field>
         </record>
 
+        <record id="view_account_account_form_plateau_extended" model="ir.ui.view">
+            <field name="name">account.journal</field>
+            <field name="model">account.account</field>
+            <field name="inherit_id" ref="account.view_account_form"/>
+            <field name="arch" type="xml">
+                <xpath expr="//page[@name='accounting']" position="after">
+                    <page string="Budget Line">
+                        <field name="ng_budget_lines">
+                            <tree string="">
+                                <field name="budget_id"/>
+                                <field name="general_account_id"/>
+                                <field name="general_journal_id"/>
+                                <field name="budget_amount"/>
+                                <field name="budget_used_amount"/>
+                                <field name="budget_variance"/>
+                            </tree>
+                        </field>
+                    </page>
+                </xpath>
+            </field>
+        </record>
+
+        <record id="ng_account_budget_tree" model="ir.ui.view">
+        <field name="name">ng.account.budget.tree</field>
+        <field name="model">ng.account.budget</field>
+            <field name="arch" type="xml">
+                <tree string="" create="1">
+                    <field name="budget_id"/>
+                    <field name="general_account_id"/>
+                    <field name="general_journal_id"/>
+                    <field name="budget_amount"/>
+                    <field name="budget_used_amount"/>
+                    <field name="budget_variance"/>
+                </tree>
+            </field>
+        </record>
+        <record id="action_ng_account_budget_line" model="ir.actions.act_window">
+            <field name="name">Budget Line</field>
+            <field name="type">ir.actions.act_window</field>
+            <field name="res_model">ng.account.budget</field>
+            <field name="view_mode">tree,form</field>
+            <field name="help" type="html">
+              <p class="o_view_nocontent_smiling_face">
+                Create a new Budget
+              </p><p>
+              </p>
+            </field>
+        </record>
+
+        <menuitem action="action_ng_account_budget_line" id="ng_account_budget_line_menu" sequence="103" parent="account.menu_finance_entries_accounting_miscellaneous"/>
+
+       
         <record id="ir_action_server_account_transaction" model="ir.actions.server">
 			<field name="name">Account Transactions</field>
             <field name="type">ir.actions.server</field>
